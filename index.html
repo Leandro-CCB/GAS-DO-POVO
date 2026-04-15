@@ -1,0 +1,1804 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gás do Povo — Sistema de Agendamentos</title>
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Nunito:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+  import { getFirestore, collection, addDoc, updateDoc, deleteDoc, doc, onSnapshot, query, orderBy, getDoc }
+    from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyBUNAiODlVTn1C_VQ1bgpurDNBQvRmmwKs",
+    authDomain: "gas-do-povo-3ce65.firebaseapp.com",
+    projectId: "gas-do-povo-3ce65",
+    storageBucket: "gas-do-povo-3ce65.firebasestorage.app",
+    messagingSenderId: "536610509441",
+    appId: "1:536610509441:web:f4e71f8f574fa4757ef380"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db  = getFirestore(app);
+  const col = collection(db, "pedidos");
+  const colValores = collection(db, "valores_clientes");
+  const colFiados  = collection(db, "fiados");
+
+  window._db  = db;
+  window._col = col;
+  window._colValores = colValores;
+  window._colFiados  = colFiados;
+  window._fsAddDoc    = addDoc;
+  window._fsUpdateDoc = updateDoc;
+  window._fsDeleteDoc = deleteDoc;
+  window._fsDoc       = doc;
+  window._fsGetDoc    = getDoc;
+  window._firebaseReady = true;
+
+  // Pedidos
+  const q = query(col, orderBy("criadoEm", "desc"));
+  onSnapshot(q, (snap) => {
+    window.pedidos = [];
+    snap.forEach(d => window.pedidos.push({ ...d.data(), _fsId: d.id }));
+    document.getElementById('fbDot').className  = 'fb-dot on';
+    document.getElementById('fbText').textContent = 'Firebase Online';
+    if (window._appReady) { window.renderTable(); window.updateStats(); }
+  }, (err) => {
+    console.error(err);
+    document.getElementById('fbDot').className  = 'fb-dot err';
+    document.getElementById('fbText').textContent = 'Erro Firebase';
+  });
+
+  // Valores clientes
+  const qV = query(colValores, orderBy("criadoEm", "desc"));
+  onSnapshot(qV, (snap) => {
+    window.valoresClientes = [];
+    snap.forEach(d => window.valoresClientes.push({ ...d.data(), _fsId: d.id }));
+    if (window._appReady) window.renderValores();
+  });
+
+  // Fiados
+  const qF = query(colFiados, orderBy("criadoEm", "desc"));
+  onSnapshot(qF, (snap) => {
+    window.fiados = [];
+    snap.forEach(d => window.fiados.push({ ...d.data(), _fsId: d.id }));
+    if (window._appReady) window.renderFiados();
+  });
+
+  document.dispatchEvent(new Event('firebase-ready'));
+</script>
+
+<style>
+  :root {
+    --green:   #009a3d;
+    --green-d: #007a30;
+    --green-l: #e8f7ee;
+    --red:     #e01c24;
+    --red-d:   #b81520;
+    --red-l:   #fdecea;
+    --blue:    #0064b4;
+    --blue-d:  #004e8c;
+    --blue-l:  #e6f0fa;
+    --yellow:  #f9a800;
+    --yellow-l:#fff8e1;
+    --orange:  #e65100;
+    --orange-l:#fff3e0;
+    --purple:  #6a1b9a;
+    --purple-l:#f3e5f5;
+    --bg:      #f2f4f7;
+    --white:   #ffffff;
+    --border:  #dde2e9;
+    --text:    #1a2233;
+    --muted:   #6b7585;
+    --inputbg: #f8f9fb;
+    --shadow:  0 2px 12px rgba(0,0,0,.07);
+    --shadow-sm: 0 1px 4px rgba(0,0,0,.06);
+  }
+
+  *, *::before, *::after { box-sizing:border-box; margin:0; padding:0; }
+  body { background:var(--bg); color:var(--text); font-family:'Nunito',sans-serif; min-height:100vh; }
+
+  /* ── HEADER ── */
+  header {
+    background:var(--white);
+    border-bottom:3px solid var(--green);
+    padding:0 2rem;
+    display:flex; align-items:center; justify-content:space-between;
+    height:90px; position:sticky; top:0; z-index:100;
+    box-shadow:var(--shadow);
+  }
+  .logo { display:flex; align-items:center; gap:14px; height:100%; padding:0; }
+  .logo img { height:175%; width:auto; object-fit:contain; object-position:left center; display:block; padding:4px 0; }
+  .logo-text { display:flex; flex-direction:column; line-height:1.15; }
+  .logo-title { font-family:'Bebas Neue',sans-serif; font-size:2.1rem; letter-spacing:3px; color:var(--green); }
+  .logo-title span { color:var(--red); }
+  .logo-sub { font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:2px; color:var(--muted); }
+
+  .header-right { display:flex; align-items:center; gap:.8rem; }
+  #clock { font-family:'JetBrains Mono',monospace; font-size:.8rem; color:var(--muted); background:var(--bg); padding:6px 12px; border-radius:20px; border:1px solid var(--border); }
+
+  .fb-status { display:flex; align-items:center; gap:6px; font-size:.74rem; font-weight:700; color:var(--muted); background:var(--bg); padding:6px 12px; border-radius:20px; border:1px solid var(--border); }
+  .fb-dot { width:8px; height:8px; border-radius:50%; background:#ccc; flex-shrink:0; }
+  .fb-dot.on  { background:var(--green); animation:pulse 2s infinite; }
+  .fb-dot.err { background:var(--red); }
+
+  .btn-export { background:var(--green); border:none; color:#fff; padding:9px 18px; border-radius:8px; font-family:'Nunito',sans-serif; font-size:.85rem; font-weight:800; cursor:pointer; display:flex; align-items:center; gap:6px; transition:all .2s; }
+  .btn-export:hover { background:var(--green-d); transform:translateY(-1px); box-shadow:0 4px 14px rgba(0,154,61,.3); }
+
+  /* ── NAV TABS ── */
+  .nav-tabs {
+    background:var(--white);
+    border-bottom:2px solid var(--border);
+    padding:0 2rem;
+    display:flex;
+    gap:0;
+    position:sticky;
+    top:90px;
+    z-index:90;
+    box-shadow:var(--shadow-sm);
+  }
+  .nav-tab {
+    padding:14px 22px;
+    font-family:'Nunito',sans-serif;
+    font-size:.85rem;
+    font-weight:800;
+    color:var(--muted);
+    cursor:pointer;
+    border:none;
+    background:transparent;
+    border-bottom:3px solid transparent;
+    margin-bottom:-2px;
+    transition:all .2s;
+    display:flex; align-items:center; gap:6px;
+    white-space:nowrap;
+  }
+  .nav-tab:hover { color:var(--text); }
+  .nav-tab.active { color:var(--green); border-bottom-color:var(--green); }
+  .nav-tab.active.red { color:var(--red); border-bottom-color:var(--red); }
+  .nav-tab.active.orange { color:var(--orange); border-bottom-color:var(--orange); }
+
+  /* ── TAB CONTENT ── */
+  .tab-content { display:none; }
+  .tab-content.active { display:block; }
+
+  /* ── STATS ── */
+  .stats-bar { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; padding:1rem 2rem; }
+  .stat { background:var(--white); border-radius:12px; padding:1rem 1.4rem; display:flex; align-items:center; gap:1rem; box-shadow:var(--shadow-sm); border:1px solid var(--border); }
+  .stat-icon { width:46px; height:46px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.4rem; flex-shrink:0; }
+  .stat-icon.g { background:var(--green-l); }
+  .stat-icon.r { background:var(--red-l); }
+  .stat-icon.b { background:var(--blue-l); }
+  .stat-icon.y { background:var(--yellow-l); }
+  .stat-icon.o { background:var(--orange-l); }
+  .stat-info { display:flex; flex-direction:column; gap:2px; }
+  .stat-label { font-size:.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); font-weight:700; }
+  .stat-value { font-family:'Bebas Neue',sans-serif; font-size:1.8rem; line-height:1; letter-spacing:1px; }
+  .stat-value.g { color:var(--green); }
+  .stat-value.r { color:var(--red); }
+  .stat-value.b { color:var(--blue); }
+  .stat-value.o { color:var(--orange); }
+
+  /* ── MAIN ── */
+  .main { padding:0 2rem 2rem; display:flex; flex-direction:column; gap:1.5rem; }
+
+  /* ── CARDS ── */
+  .form-card, .list-card { background:var(--white); border-radius:14px; box-shadow:var(--shadow); border:1px solid var(--border); overflow:hidden; }
+
+  .card-header { background:linear-gradient(135deg,var(--green),var(--green-d)); padding:1rem 1.8rem; display:flex; align-items:center; gap:10px; }
+  .card-header.blue { background:linear-gradient(135deg,var(--blue),var(--blue-d)); }
+  .card-header.red { background:linear-gradient(135deg,var(--red),var(--red-d)); }
+  .card-header.orange { background:linear-gradient(135deg,#e65100,#bf360c); }
+  .card-header h2 { font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:2px; color:#fff; flex:1; }
+  .card-body { padding:1.5rem 1.8rem; }
+
+  /* ── FORM GRID ── */
+  .form-grid { display:grid; grid-template-columns:repeat(4,1fr); gap:1rem; }
+  .form-grid .span2 { grid-column:span 2; }
+  .form-grid .span3 { grid-column:span 3; }
+  .form-grid .span4 { grid-column:span 4; }
+  .form-group { display:flex; flex-direction:column; gap:5px; }
+
+  label { font-size:.72rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); font-weight:800; }
+
+  input, select, textarea {
+    background:var(--inputbg); border:1.5px solid var(--border); color:var(--text);
+    padding:10px 12px; border-radius:8px; font-family:'Nunito',sans-serif;
+    font-size:.9rem; outline:none; width:100%;
+    transition:border-color .2s, box-shadow .2s;
+  }
+  input:focus, select:focus, textarea:focus { border-color:var(--green); box-shadow:0 0 0 3px rgba(0,154,61,.1); }
+  input::placeholder, textarea::placeholder { color:var(--muted); opacity:.5; }
+  textarea { resize:vertical; min-height:58px; }
+
+  /* Atendente */
+  .atendente-wrap { display:flex; align-items:center; gap:10px; }
+  .atendente-avatar { width:36px; height:36px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:18px; flex-shrink:0; border:2px solid var(--border); transition:all .3s; }
+  .atendente-avatar.rosa { background:#fce4ec; border-color:#f48fb1; }
+  .atendente-avatar.rebe { background:#ede7f6; border-color:#b39ddb; }
+
+  select { appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24'%3E%3Cpath fill='%236b7585' d='M7 10l5 5 5-5z'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 12px center; padding-right:30px; }
+
+  /* Tipo entrega */
+  .radio-group { display:flex; gap:8px; }
+  .radio-opt { flex:1; background:var(--inputbg); border:2px solid var(--border); border-radius:8px; padding:10px 12px; cursor:pointer; text-align:center; font-size:.85rem; font-weight:700; color:var(--muted); user-select:none; transition:all .2s; }
+  .radio-opt.selected { border-color:var(--green); color:var(--green); background:var(--green-l); }
+  .radio-opt input { display:none; }
+
+  #taxaRow { overflow:hidden; max-height:0; opacity:0; transition:max-height .3s, opacity .3s; }
+  #taxaRow.visible { max-height:100px; opacity:1; }
+
+  .form-divider { grid-column:span 4; display:flex; align-items:center; gap:10px; color:var(--muted); font-size:.72rem; font-weight:800; text-transform:uppercase; letter-spacing:1.5px; }
+  .form-divider::before, .form-divider::after { content:''; flex:1; height:1px; background:var(--border); }
+
+  .form-actions { display:flex; gap:.8rem; align-items:center; margin-top:.5rem; }
+  .btn-submit { background:var(--red); border:none; color:#fff; padding:12px 28px; border-radius:10px; font-family:'Bebas Neue',sans-serif; font-size:1.1rem; letter-spacing:2px; cursor:pointer; transition:all .2s; white-space:nowrap; }
+  .btn-submit:hover { background:var(--red-d); transform:translateY(-1px); box-shadow:0 4px 16px rgba(224,28,36,.3); }
+  .btn-submit:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+  .btn-submit.green { background:var(--green); }
+  .btn-submit.green:hover { background:var(--green-d); box-shadow:0 4px 16px rgba(0,154,61,.3); }
+  .btn-submit.orange { background:var(--orange); }
+  .btn-submit.orange:hover { background:#bf360c; }
+  .btn-clear { background:transparent; border:2px solid var(--border); color:var(--muted); padding:10px 18px; border-radius:10px; font-family:'Nunito',sans-serif; font-size:.85rem; font-weight:700; cursor:pointer; transition:all .2s; white-space:nowrap; }
+  .btn-clear:hover { border-color:var(--muted); color:var(--text); }
+
+  /* ── LIST ── */
+  .list-card-header { padding:1rem 1.8rem; display:flex; align-items:center; justify-content:space-between; }
+  .list-card-header.blue { background:linear-gradient(135deg,var(--blue),var(--blue-d)); }
+  .list-card-header.green { background:linear-gradient(135deg,var(--green),var(--green-d)); }
+  .list-card-header.orange { background:linear-gradient(135deg,#e65100,#bf360c); }
+  .list-card-header h2 { font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:2px; color:#fff; }
+  .list-controls { display:flex; align-items:center; gap:.8rem; padding:1rem 1.8rem; border-bottom:1px solid var(--border); flex-wrap:wrap; }
+  .search-input { padding:8px 14px; background:var(--inputbg); border:1.5px solid var(--border); color:var(--text); border-radius:8px; font-family:'Nunito',sans-serif; font-size:.85rem; outline:none; width:260px; transition:border-color .2s; }
+  .search-input:focus { border-color:var(--blue); box-shadow:0 0 0 3px rgba(0,100,180,.1); }
+  .filter-tabs { display:flex; gap:6px; flex-wrap:wrap; }
+  .filter-tab { padding:6px 14px; border-radius:20px; font-size:.78rem; font-weight:800; cursor:pointer; border:2px solid var(--border); background:transparent; color:var(--muted); transition:all .2s; font-family:'Nunito',sans-serif; }
+  .filter-tab.active { background:var(--blue); border-color:var(--blue); color:#fff; }
+  .filter-tab.active.green { background:var(--green); border-color:var(--green); }
+  .filter-tab.active.orange { background:var(--orange); border-color:var(--orange); }
+  .filter-tab:hover:not(.active) { border-color:var(--blue); color:var(--blue); }
+
+  /* ── TABLE ── */
+  .table-wrap { overflow-x:auto; }
+  table { width:100%; border-collapse:collapse; font-size:.82rem; }
+  thead { background:#f7f9fc; border-bottom:2px solid var(--border); }
+  th { padding:10px 12px; text-align:left; font-size:.68rem; text-transform:uppercase; letter-spacing:1.2px; color:var(--muted); font-weight:800; white-space:nowrap; }
+  tbody tr { border-bottom:1px solid var(--border); transition:background .15s; }
+  tbody tr:last-child { border-bottom:none; }
+  tbody tr:hover { background:#f0f8f4; }
+  tbody tr.entregue { background:#fafbfc; }
+  tbody tr.entregue td { opacity:.6; }
+  tbody tr.entregue td.no-fade { opacity:1 !important; }
+  td { padding:10px 12px; vertical-align:middle; white-space:nowrap; color:var(--text); }
+
+  .badge { display:inline-flex; align-items:center; gap:4px; padding:4px 10px; border-radius:20px; font-size:.72rem; font-weight:800; white-space:nowrap; }
+  .badge-pending  { background:#fff3e0; color:#e65100; border:1.5px solid #ffb74d; }
+  .badge-entregue { background:var(--green-l); color:var(--green-d); border:1.5px solid #81c784; }
+  .badge-retirada { background:var(--blue-l); color:var(--blue-d); border:1.5px solid #64b5f6; }
+  .badge-aberto   { background:var(--orange-l); color:var(--orange); border:1.5px solid #ffb74d; }
+  .badge-quitado  { background:var(--green-l); color:var(--green-d); border:1.5px solid #81c784; }
+  .badge-parcial  { background:var(--yellow-l); color:#f57f17; border:1.5px solid #ffe082; }
+
+  .td-code { font-family:'JetBrains Mono',monospace; font-size:.78rem; font-weight:600; color:var(--green-d); background:var(--green-l); padding:3px 8px; border-radius:5px; }
+  .td-name { font-weight:800; max-width:140px; overflow:hidden; text-overflow:ellipsis; }
+  .td-phone { font-family:'JetBrains Mono',monospace; font-size:.78rem; color:var(--muted); }
+  .td-addr { color:var(--muted); max-width:180px; overflow:hidden; text-overflow:ellipsis; }
+  .td-mono { font-family:'JetBrains Mono',monospace; font-size:.78rem; }
+  .td-taxa { font-family:'JetBrains Mono',monospace; color:var(--green-d); font-weight:700; }
+  .td-valor { font-family:'JetBrains Mono',monospace; color:var(--green-d); font-weight:700; font-size:.85rem; }
+  .td-valor-red { font-family:'JetBrains Mono',monospace; color:var(--red); font-weight:700; font-size:.85rem; }
+  .td-valor-orange { font-family:'JetBrains Mono',monospace; color:var(--orange); font-weight:700; font-size:.85rem; }
+
+  .delivery-date-input { background:var(--inputbg); border:1.5px solid var(--border); color:var(--text); padding:6px 8px; border-radius:6px; font-family:'JetBrains Mono',monospace; font-size:.75rem; width:128px; outline:none; cursor:pointer; font-weight:600; transition:border-color .2s; }
+  .delivery-date-input:focus { border-color:var(--green); }
+
+  .btn-actions { display:flex; gap:4px; }
+  .btn-edit { background:var(--blue-l); border:1.5px solid #90caf9; color:var(--blue-d); width:30px; height:30px; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:13px; transition:all .2s; }
+  .btn-edit:hover { background:var(--blue); color:#fff; border-color:var(--blue); }
+  .btn-del { background:transparent; border:1.5px solid var(--border); color:var(--red); width:30px; height:30px; border-radius:6px; cursor:pointer; display:inline-flex; align-items:center; justify-content:center; font-size:13px; transition:all .2s; }
+  .btn-del:hover { background:var(--red-l); border-color:var(--red); }
+  .btn-baixa { background:var(--green-l); border:1.5px solid #81c784; color:var(--green-d); padding:5px 12px; border-radius:6px; cursor:pointer; font-size:.78rem; font-weight:800; font-family:'Nunito',sans-serif; transition:all .2s; white-space:nowrap; }
+  .btn-baixa:hover { background:var(--green); color:#fff; border-color:var(--green); }
+  .btn-hist { background:var(--blue-l); border:1.5px solid #90caf9; color:var(--blue-d); padding:5px 12px; border-radius:6px; cursor:pointer; font-size:.78rem; font-weight:800; font-family:'Nunito',sans-serif; transition:all .2s; white-space:nowrap; }
+  .btn-hist:hover { background:var(--blue); color:#fff; }
+
+  .empty-state { text-align:center; padding:4rem 2rem; color:var(--muted); }
+  .empty-state .icon { font-size:3.5rem; margin-bottom:1rem; opacity:.3; }
+  .empty-state p { font-size:.9rem; font-weight:600; }
+
+  /* ── MODAL ── */
+  .modal-overlay { position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:200; display:flex; align-items:center; justify-content:center; opacity:0; pointer-events:none; transition:opacity .25s; }
+  .modal-overlay.open { opacity:1; pointer-events:all; }
+  .modal { background:var(--white); border-radius:16px; width:700px; max-width:95vw; box-shadow:0 20px 60px rgba(0,0,0,.2); transform:translateY(30px); transition:transform .25s; max-height:90vh; overflow-y:auto; }
+  .modal-overlay.open .modal { transform:translateY(0); }
+  .modal-header { background:linear-gradient(135deg,var(--blue),var(--blue-d)); padding:1.2rem 1.6rem; display:flex; align-items:center; justify-content:space-between; border-radius:16px 16px 0 0; }
+  .modal-header.green { background:linear-gradient(135deg,var(--green),var(--green-d)); }
+  .modal-header.orange { background:linear-gradient(135deg,#e65100,#bf360c); }
+  .modal-header h3 { font-family:'Bebas Neue',sans-serif; font-size:1.2rem; letter-spacing:2px; color:#fff; }
+  .modal-close { background:rgba(255,255,255,.2); border:none; color:#fff; width:32px; height:32px; border-radius:8px; cursor:pointer; font-size:15px; display:flex; align-items:center; justify-content:center; transition:all .2s; }
+  .modal-close:hover { background:rgba(255,255,255,.35); }
+  .modal-body { padding:1.6rem; }
+  .modal-grid { display:grid; grid-template-columns:1fr 1fr; gap:1rem; }
+  .modal-grid .span2 { grid-column:span 2; }
+  .modal-footer { padding:1rem 1.6rem; border-top:1px solid var(--border); display:flex; justify-content:flex-end; gap:.8rem; }
+  .btn-save { background:var(--blue); border:none; color:#fff; padding:10px 28px; border-radius:8px; font-family:'Bebas Neue',sans-serif; font-size:1.1rem; letter-spacing:2px; cursor:pointer; transition:all .2s; }
+  .btn-save:hover { background:var(--blue-d); }
+  .btn-save:disabled { opacity:.5; cursor:not-allowed; }
+  .btn-save.green { background:var(--green); }
+  .btn-save.green:hover { background:var(--green-d); }
+  .btn-save.orange { background:var(--orange); }
+  .btn-cancel-modal { background:transparent; border:2px solid var(--border); color:var(--muted); padding:8px 20px; border-radius:8px; font-family:'Nunito',sans-serif; font-size:.9rem; font-weight:700; cursor:pointer; transition:all .2s; }
+  .btn-cancel-modal:hover { border-color:var(--muted); color:var(--text); }
+
+  /* ── PRODUTOS VALORES ── */
+  .produtos-list { display:flex; flex-direction:column; gap:8px; }
+  .produto-row { display:grid; grid-template-columns:1fr 130px 32px; gap:8px; align-items:center; }
+  .btn-add-prod { background:var(--green-l); border:1.5px solid #81c784; color:var(--green-d); padding:8px 14px; border-radius:8px; cursor:pointer; font-size:.82rem; font-weight:800; font-family:'Nunito',sans-serif; transition:all .2s; display:inline-flex; align-items:center; gap:5px; }
+  .btn-add-prod:hover { background:var(--green); color:#fff; }
+  .btn-rm-prod { background:var(--red-l); border:1.5px solid #ef9a9a; color:var(--red); width:32px; height:38px; border-radius:6px; cursor:pointer; font-size:14px; display:inline-flex; align-items:center; justify-content:center; transition:all .2s; flex-shrink:0; }
+  .btn-rm-prod:hover { background:var(--red); color:#fff; }
+
+  /* ── HISTORICO ── */
+  .historico-section { margin-top:1.5rem; }
+  .historico-title { font-size:.72rem; text-transform:uppercase; letter-spacing:1.5px; color:var(--muted); font-weight:800; margin-bottom:.8rem; display:flex; align-items:center; gap:8px; }
+  .historico-title::after { content:''; flex:1; height:1px; background:var(--border); }
+  .historico-table { width:100%; border-collapse:collapse; font-size:.78rem; }
+  .historico-table th { padding:7px 10px; background:#f7f9fc; color:var(--muted); font-size:.65rem; text-transform:uppercase; letter-spacing:1px; font-weight:800; border-bottom:1px solid var(--border); }
+  .historico-table td { padding:7px 10px; border-bottom:1px solid var(--border); color:var(--muted); }
+  .historico-table tr:last-child td { border-bottom:none; }
+  .hist-empty { color:var(--muted); font-size:.8rem; font-style:italic; padding:8px 0; }
+
+  /* ── VALOR CLIENTE CARD ── */
+  .valor-cliente-card { background:var(--white); border-radius:12px; border:1px solid var(--border); overflow:hidden; box-shadow:var(--shadow-sm); }
+  .valor-cliente-head { background:#f7f9fc; padding:.9rem 1.2rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); }
+  .valor-cliente-nome { font-weight:800; font-size:.95rem; }
+  .valor-cliente-body { padding:1rem 1.2rem; }
+  .prod-item { display:flex; align-items:center; justify-content:space-between; padding:6px 0; border-bottom:1px solid var(--border); }
+  .prod-item:last-child { border-bottom:none; }
+  .prod-nome { font-size:.85rem; font-weight:700; }
+  .prod-valor { font-family:'JetBrains Mono',monospace; font-size:.95rem; font-weight:700; color:var(--green-d); }
+  .prod-atualizado { font-size:.7rem; color:var(--muted); }
+  .valores-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:1rem; padding:1.5rem; }
+
+  /* ── FIADO CARD ── */
+  .fiado-card { background:var(--white); border-radius:12px; border:1px solid var(--border); overflow:hidden; box-shadow:var(--shadow-sm); }
+  .fiado-head { padding:.9rem 1.2rem; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid var(--border); gap:.5rem; flex-wrap:wrap; }
+  .fiado-nome { font-weight:800; font-size:.95rem; }
+  .fiado-body { padding:1rem 1.2rem; display:flex; flex-direction:column; gap:.7rem; }
+  .fiado-info { display:flex; align-items:center; justify-content:space-between; }
+  .fiado-info-label { font-size:.7rem; text-transform:uppercase; letter-spacing:1px; color:var(--muted); font-weight:800; }
+  .fiado-info-val { font-family:'JetBrains Mono',monospace; font-size:.9rem; font-weight:700; }
+  .fiados-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:1rem; padding:1.5rem; }
+
+  /* Baixa form inline */
+  .baixa-form { background:var(--green-l); border:1.5px solid #81c784; border-radius:10px; padding:1rem; display:flex; flex-direction:column; gap:.7rem; }
+  .baixa-form .baixa-row { display:grid; grid-template-columns:1fr 1fr; gap:.7rem; }
+  .baixa-form label { font-size:.7rem; color:var(--green-d); }
+  .baixa-form input { background:#fff; border-color:#81c784; font-size:.85rem; padding:8px 10px; }
+
+  /* ── FOOTER ── */
+  footer { background:linear-gradient(135deg,var(--green-d),var(--green)); padding:.9rem 2rem; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:.5rem; }
+  .footer-left { display:flex; align-items:center; gap:8px; }
+  .pulse { display:inline-block; width:8px; height:8px; background:#fff; border-radius:50%; opacity:.75; animation:pulse 2s infinite; }
+  @keyframes pulse { 0%,100%{opacity:.75}50%{opacity:.2} }
+  .footer-text { font-size:.78rem; color:rgba(255,255,255,.9); font-weight:700; }
+  .footer-copy { font-size:.73rem; color:rgba(255,255,255,.8); font-weight:700; text-align:right; }
+  .footer-copy strong { color:#fff; }
+
+  /* ── TOAST ── */
+  .toast { position:fixed; bottom:2rem; right:2rem; background:var(--white); border:1px solid var(--border); border-left:4px solid var(--green); color:var(--text); padding:13px 20px; border-radius:10px; font-size:.88rem; font-weight:700; z-index:999; transform:translateY(100px); opacity:0; transition:all .3s cubic-bezier(.34,1.56,.64,1); max-width:340px; box-shadow:0 8px 30px rgba(0,0,0,.12); }
+  .toast.show { transform:translateY(0); opacity:1; }
+  .toast.error { border-left-color:var(--red); }
+  .toast.warn  { border-left-color:var(--yellow); }
+
+  @media (max-width:1100px) {
+    .form-grid { grid-template-columns:repeat(3,1fr); }
+    .form-grid .span2 { grid-column:span 2; }
+    .form-divider { grid-column:span 3; }
+    .stats-bar { grid-template-columns:repeat(2,1fr); }
+    .valores-grid, .fiados-grid { grid-template-columns:1fr 1fr; }
+  }
+  @media (max-width:700px) {
+    .form-grid { grid-template-columns:1fr 1fr; }
+    .form-grid .span2 { grid-column:span 2; }
+    .form-divider { grid-column:span 2; }
+    .main,.stats-bar { padding-left:1rem; padding-right:1rem; }
+    header { padding:0 1rem; }
+    #clock,.fb-status { display:none; }
+    .modal-grid { grid-template-columns:1fr; }
+    .modal-grid .span2 { grid-column:span 1; }
+    .nav-tabs { padding:0 .5rem; overflow-x:auto; }
+    .nav-tab { padding:12px 14px; font-size:.78rem; }
+    .valores-grid, .fiados-grid { grid-template-columns:1fr; padding:1rem; }
+  }
+</style>
+</head>
+<body>
+
+<!-- HEADER -->
+<header>
+  <div class="logo">
+    <img src="logo.png" alt="Gás do Povo" onerror="this.style.display='none'">
+    <div class="logo-text">
+      <div class="logo-title">GÁS <span>DO</span> POVO</div>
+      <div class="logo-sub">Sistema de Agendamentos</div>
+    </div>
+  </div>
+  <div class="header-right">
+    <div class="fb-status" id="fbStatus">
+      <div class="fb-dot" id="fbDot"></div>
+      <span id="fbText">Conectando...</span>
+    </div>
+    <span id="clock"></span>
+    <button class="btn-export" onclick="exportXLSX()">📊 Exportar XLSX</button>
+  </div>
+</header>
+
+<!-- NAV TABS -->
+<nav class="nav-tabs">
+  <button class="nav-tab active" id="tab-agendamentos" onclick="switchTab('agendamentos')">📦 Agendamentos</button>
+  <button class="nav-tab" id="tab-valores" onclick="switchTab('valores')">💰 Valores de Clientes</button>
+  <button class="nav-tab" id="tab-fiados" onclick="switchTab('fiados')">📋 Fiados</button>
+</nav>
+
+<!-- ══════════════════════════════════════════
+     ABA: AGENDAMENTOS
+═══════════════════════════════════════════ -->
+<div id="content-agendamentos" class="tab-content active">
+
+  <!-- STATS -->
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-icon g">📦</div>
+      <div class="stat-info">
+        <div class="stat-label">Total de Pedidos</div>
+        <div class="stat-value g" id="statTotal">0</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon r">⏳</div>
+      <div class="stat-info">
+        <div class="stat-label">Aguardando Entrega</div>
+        <div class="stat-value r" id="statPending">0</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon g">✅</div>
+      <div class="stat-info">
+        <div class="stat-label">Entregues Hoje</div>
+        <div class="stat-value g" id="statHoje">0</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon b">💰</div>
+      <div class="stat-info">
+        <div class="stat-label">Receita em Taxas</div>
+        <div class="stat-value b" id="statTaxas">R$ 0</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MAIN -->
+  <div class="main">
+
+    <!-- FORM CARD -->
+    <div class="form-card">
+      <div class="card-header">
+        <span>📋</span>
+        <h2>REGISTRAR NOVO PEDIDO</h2>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+
+          <div class="form-group span2">
+            <label>Nome do Cliente *</label>
+            <input type="text" id="fNome" placeholder="Nome completo do cliente">
+          </div>
+
+          <div class="form-group">
+            <label>Telefone *</label>
+            <input type="text" id="fTelefone" placeholder="(00) 00000-0000" maxlength="16">
+          </div>
+
+          <div class="form-group">
+            <label>Data da Compra *</label>
+            <input type="date" id="fDataCompra">
+          </div>
+
+          <div class="form-group span2">
+            <label>Endereço Completo *</label>
+            <textarea id="fEndereco" rows="2" placeholder="Rua, número, bairro, complemento..."></textarea>
+          </div>
+
+          <div class="form-group">
+            <label>Qtd. Botijões</label>
+            <input type="number" id="fQtd" min="1" value="1">
+          </div>
+
+          <div class="form-group">
+            <label>Valor do Gás (R$)</label>
+            <input type="number" id="fValorGas" step="0.01" min="0" placeholder="0,00">
+          </div>
+
+          <!-- Atendente -->
+          <div class="form-group span2">
+            <label>👩‍💼 Atendente Responsável *</label>
+            <div class="atendente-wrap">
+              <div class="atendente-avatar" id="atendenteAvatar">👤</div>
+              <select id="fAtendente" style="flex:1" onchange="updateAvatar('fAtendente','atendenteAvatar')">
+                <option value="">Selecione a atendente...</option>
+                <option value="Rosangela">🌸 Rosangela</option>
+                <option value="Rebeca">💜 Rebeca</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="form-divider">Tipo de Entrega</div>
+
+          <div class="form-group span2">
+            <label>Modalidade *</label>
+            <div class="radio-group">
+              <label class="radio-opt selected" id="optEntrega" onclick="setTipo('entrega')">
+                <input type="radio" name="tipo" value="entrega" checked>
+                🚚 Entrega em Casa
+              </label>
+              <label class="radio-opt" id="optRetirada" onclick="setTipo('retirada')">
+                <input type="radio" name="tipo" value="retirada">
+                🏠 Retirada na Portaria
+              </label>
+            </div>
+          </div>
+
+          <div class="form-group" id="taxaRow">
+            <label>Taxa de Entrega (R$)</label>
+            <input type="number" id="fTaxa" step="0.01" min="0" placeholder="0,00">
+          </div>
+
+          <div class="form-group">
+            <label>Observações</label>
+            <input type="text" id="fObs" placeholder="Apto, ponto de referência...">
+          </div>
+
+          <div class="form-group span2" style="justify-content:flex-end">
+            <div class="form-actions">
+              <button class="btn-clear" onclick="clearForm()">🗑 Limpar</button>
+              <button class="btn-submit" id="btnRegistrar" onclick="addPedido()">+ REGISTRAR PEDIDO</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- LIST CARD -->
+    <div class="list-card">
+      <div class="list-card-header blue">
+        <h2>📦 PEDIDOS CADASTRADOS</h2>
+        <span id="listCount" style="font-size:.8rem;color:rgba(255,255,255,.75);font-weight:700"></span>
+      </div>
+      <div class="list-controls">
+        <input type="text" class="search-input" placeholder="🔍 Buscar por nome, telefone, endereço..." id="searchInput" oninput="renderTable()">
+        <div class="filter-tabs">
+          <button class="filter-tab active" onclick="setFilter('todos',this)">Todos</button>
+          <button class="filter-tab" onclick="setFilter('pendente',this)">⏳ Pendentes</button>
+          <button class="filter-tab" onclick="setFilter('entregue',this)">✅ Entregues</button>
+          <button class="filter-tab" onclick="setFilter('retirada',this)">🏠 Retiradas</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th><th>Cliente</th><th>Telefone</th><th>Endereço</th>
+              <th>Compra</th><th>Qtd</th><th>Valor Gás</th><th>Tipo</th>
+              <th>Taxa</th><th>Atendente</th><th>Obs</th>
+              <th>Data Entrega</th><th>Status</th><th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="tableBody"></tbody>
+        </table>
+        <div id="emptyState" class="empty-state" style="display:none">
+          <div class="icon">📋</div>
+          <p>Nenhum pedido encontrado.<br>Cadastre um novo pedido no formulário acima.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+</div><!-- /content-agendamentos -->
+
+
+<!-- ══════════════════════════════════════════
+     ABA: VALORES DE CLIENTES
+═══════════════════════════════════════════ -->
+<div id="content-valores" class="tab-content">
+
+  <div class="main">
+
+    <!-- FORM -->
+    <div class="form-card">
+      <div class="card-header green">
+        <span>💰</span>
+        <h2>CADASTRAR / ATUALIZAR VALOR DE CLIENTE</h2>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+
+          <div class="form-group span2">
+            <label>Nome do Cliente *</label>
+            <input type="text" id="vcNome" placeholder="Nome completo do cliente">
+          </div>
+
+          <div class="form-group span2">
+            <label>Data da Atualização *</label>
+            <input type="date" id="vcData">
+          </div>
+
+          <div class="form-divider" style="grid-column:span 4">Produtos</div>
+
+          <div class="form-group span4" id="vcProdutosWrap">
+            <div class="produtos-list" id="vcProdutosList">
+              <!-- linhas adicionadas dinamicamente -->
+            </div>
+            <button class="btn-add-prod" onclick="addProdutoRow()" style="margin-top:.6rem">+ Adicionar Produto</button>
+          </div>
+
+          <div class="form-group span4" style="justify-content:flex-end">
+            <div class="form-actions">
+              <button class="btn-clear" onclick="clearValorForm()">🗑 Limpar</button>
+              <button class="btn-submit green" id="btnSalvarValor" onclick="salvarValorCliente()">💾 SALVAR VALORES</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- LISTA -->
+    <div class="list-card">
+      <div class="list-card-header green">
+        <h2>💰 VALORES POR CLIENTE</h2>
+        <span id="valoresCount" style="font-size:.8rem;color:rgba(255,255,255,.75);font-weight:700"></span>
+      </div>
+      <div class="list-controls">
+        <input type="text" class="search-input" placeholder="🔍 Buscar cliente..." id="vcSearchInput" oninput="renderValores()">
+      </div>
+      <div id="valoresGrid" class="valores-grid">
+        <div class="empty-state">
+          <div class="icon">💰</div>
+          <p>Nenhum valor cadastrado ainda.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div><!-- /content-valores -->
+
+
+<!-- ══════════════════════════════════════════
+     ABA: FIADOS
+═══════════════════════════════════════════ -->
+<div id="content-fiados" class="tab-content">
+
+  <div class="stats-bar">
+    <div class="stat">
+      <div class="stat-icon o">📋</div>
+      <div class="stat-info">
+        <div class="stat-label">Total de Fiados</div>
+        <div class="stat-value o" id="fiadoTotal">0</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon r">🔓</div>
+      <div class="stat-info">
+        <div class="stat-label">Em Aberto</div>
+        <div class="stat-value r" id="fiadoAberto">0</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon g">✅</div>
+      <div class="stat-info">
+        <div class="stat-label">Quitados</div>
+        <div class="stat-value g" id="fiadoQuitado">0</div>
+      </div>
+    </div>
+    <div class="stat">
+      <div class="stat-icon r">💸</div>
+      <div class="stat-info">
+        <div class="stat-label">Total em Aberto (R$)</div>
+        <div class="stat-value r" id="fiadoTotalValor">R$ 0</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="main">
+
+    <!-- FORM -->
+    <div class="form-card">
+      <div class="card-header orange">
+        <span>📋</span>
+        <h2>REGISTRAR FIADO</h2>
+      </div>
+      <div class="card-body">
+        <div class="form-grid">
+
+          <div class="form-group span2">
+            <label>Nome do Cliente *</label>
+            <input type="text" id="ffNome" placeholder="Nome completo do cliente">
+          </div>
+
+          <div class="form-group">
+            <label>Valor do Fiado (R$) *</label>
+            <input type="number" id="ffValor" step="0.01" min="0.01" placeholder="0,00">
+          </div>
+
+          <div class="form-group">
+            <label>Data da Entrega *</label>
+            <input type="date" id="ffData">
+          </div>
+
+          <div class="form-group span4">
+            <label>Observações</label>
+            <input type="text" id="ffObs" placeholder="Produto, referência...">
+          </div>
+
+          <div class="form-group span4" style="justify-content:flex-end">
+            <div class="form-actions">
+              <button class="btn-clear" onclick="clearFiadoForm()">🗑 Limpar</button>
+              <button class="btn-submit orange" id="btnRegistrarFiado" onclick="addFiado()">+ REGISTRAR FIADO</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+
+    <!-- LISTA -->
+    <div class="list-card">
+      <div class="list-card-header orange">
+        <h2>📋 FIADOS CADASTRADOS</h2>
+        <span id="fiadosCount" style="font-size:.8rem;color:rgba(255,255,255,.75);font-weight:700"></span>
+      </div>
+      <div class="list-controls">
+        <input type="text" class="search-input" placeholder="🔍 Buscar cliente..." id="ffSearchInput" oninput="renderFiados()">
+        <div class="filter-tabs">
+          <button class="filter-tab active orange" id="fiadoFiltroBtn-todos" onclick="setFiadoFiltro('todos',this)">Todos</button>
+          <button class="filter-tab" id="fiadoFiltroBtn-aberto" onclick="setFiadoFiltro('aberto',this)">🔓 Em Aberto</button>
+          <button class="filter-tab" id="fiadoFiltroBtn-quitado" onclick="setFiadoFiltro('quitado',this)">✅ Quitados</button>
+        </div>
+      </div>
+      <div id="fiadosGrid" class="fiados-grid">
+        <div class="empty-state">
+          <div class="icon">📋</div>
+          <p>Nenhum fiado registrado ainda.</p>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div><!-- /content-fiados -->
+
+
+<!-- FOOTER -->
+<footer>
+  <div class="footer-left">
+    <span class="pulse"></span>
+    <span class="footer-text">🔥 Sistema Online — Gás do Povo</span>
+  </div>
+  <div class="footer-copy">
+    © 2026 Sistema de Agendamento de Gás do Povo &nbsp;|&nbsp; Desenvolvido por <strong>Leandro Machado</strong>
+  </div>
+</footer>
+
+<div class="toast" id="toast"></div>
+
+<!-- ═══════════════════════════════════════
+     MODAL EDIÇÃO PEDIDO
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalOverlay" onclick="closeModalOutside(event)">
+  <div class="modal" id="modal">
+    <div class="modal-header">
+      <h3>✏️ EDITAR PEDIDO</h3>
+      <button class="modal-close" onclick="closeModal()">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="mFsId">
+      <div class="modal-grid">
+
+        <div class="form-group span2">
+          <label>Nome do Cliente *</label>
+          <input type="text" id="mNome">
+        </div>
+        <div class="form-group">
+          <label>Telefone *</label>
+          <input type="text" id="mTelefone" maxlength="16">
+        </div>
+        <div class="form-group">
+          <label>Data da Compra *</label>
+          <input type="date" id="mDataCompra">
+        </div>
+        <div class="form-group span2">
+          <label>Endereço Completo *</label>
+          <textarea id="mEndereco" rows="2"></textarea>
+        </div>
+        <div class="form-group">
+          <label>Qtd. Botijões</label>
+          <input type="number" id="mQtd" min="1">
+        </div>
+        <div class="form-group">
+          <label>Valor do Gás (R$)</label>
+          <input type="number" id="mValorGas" step="0.01" min="0">
+        </div>
+
+        <div class="form-group span2">
+          <label>👩‍💼 Atendente</label>
+          <div class="atendente-wrap">
+            <div class="atendente-avatar" id="mAtendenteAvatar">👤</div>
+            <select id="mAtendente" style="flex:1" onchange="updateAvatar('mAtendente','mAtendenteAvatar')">
+              <option value="">Selecione...</option>
+              <option value="Rosangela">🌸 Rosangela</option>
+              <option value="Rebeca">💜 Rebeca</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label>Tipo de Entrega</label>
+          <select id="mTipo" onchange="toggleModalTaxa()">
+            <option value="entrega">🚚 Entrega em Casa</option>
+            <option value="retirada">🏠 Retirada na Portaria</option>
+          </select>
+        </div>
+        <div class="form-group" id="mTaxaRow">
+          <label>Taxa de Entrega (R$)</label>
+          <input type="number" id="mTaxa" step="0.01" min="0">
+        </div>
+        <div class="form-group">
+          <label>Data de Entrega</label>
+          <input type="date" id="mDataEntrega">
+        </div>
+        <div class="form-group">
+          <label>Observações</label>
+          <input type="text" id="mObs">
+        </div>
+
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="closeModal()">Cancelar</button>
+      <button class="btn-save" id="btnSalvar" onclick="salvarEdicao()">💾 SALVAR ALTERAÇÕES</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL HISTÓRICO DE VALORES
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalHistValores" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:600px">
+    <div class="modal-header green">
+      <h3 id="modalHistValoresTitle">📜 HISTÓRICO DE VALORES</h3>
+      <button class="modal-close" onclick="document.getElementById('modalHistValores').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body" id="modalHistValoresBody"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="document.getElementById('modalHistValores').classList.remove('open')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL EDITAR VALOR CLIENTE
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalEditValor" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:580px">
+    <div class="modal-header green">
+      <h3>✏️ EDITAR VALORES DO CLIENTE</h3>
+      <button class="modal-close" onclick="document.getElementById('modalEditValor').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="evFsId">
+      <div class="modal-grid">
+        <div class="form-group span2">
+          <label>Nome do Cliente</label>
+          <input type="text" id="evNome">
+        </div>
+        <div class="form-group span2">
+          <label>Data da Atualização</label>
+          <input type="date" id="evData">
+        </div>
+        <div class="form-group span2" style="margin-top:.3rem">
+          <div class="produtos-list" id="evProdutosList"></div>
+          <button class="btn-add-prod" onclick="addProdutoRowEdit()" style="margin-top:.6rem">+ Adicionar Produto</button>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="document.getElementById('modalEditValor').classList.remove('open')">Cancelar</button>
+      <button class="btn-save green" onclick="salvarEdicaoValor()">💾 SALVAR</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL BAIXA FIADO
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalBaixaFiado" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:500px">
+    <div class="modal-header orange">
+      <h3 id="modalBaixaTitle">💳 REGISTRAR BAIXA</h3>
+      <button class="modal-close" onclick="document.getElementById('modalBaixaFiado').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="baixaFsId">
+      <div style="background:var(--orange-l);border:1.5px solid #ffb74d;border-radius:10px;padding:1rem;margin-bottom:1rem;display:flex;gap:1.5rem;flex-wrap:wrap">
+        <div>
+          <div style="font-size:.7rem;color:var(--orange);font-weight:800;text-transform:uppercase;letter-spacing:1px">Valor Original</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700" id="baixaValorOriginal">R$ 0,00</div>
+        </div>
+        <div>
+          <div style="font-size:.7rem;color:var(--red);font-weight:800;text-transform:uppercase;letter-spacing:1px">Saldo Devedor</div>
+          <div style="font-family:'JetBrains Mono',monospace;font-size:1.1rem;font-weight:700;color:var(--red)" id="baixaSaldoDevedor">R$ 0,00</div>
+        </div>
+      </div>
+      <div class="modal-grid">
+        <div class="form-group">
+          <label>Data da Quitação *</label>
+          <input type="date" id="baixaData">
+        </div>
+        <div class="form-group">
+          <label>Valor Pago (R$) *</label>
+          <input type="number" id="baixaValorPago" step="0.01" min="0.01" placeholder="0,00" oninput="calcBaixaSaldo()">
+        </div>
+        <div class="form-group span2">
+          <label>Observação</label>
+          <input type="text" id="baixaObs" placeholder="Forma de pagamento, etc...">
+        </div>
+      </div>
+      <div id="baixaPreview" style="display:none;margin-top:.8rem;background:var(--green-l);border:1.5px solid #81c784;border-radius:8px;padding:.8rem;font-size:.85rem;font-weight:700;color:var(--green-d)"></div>
+      <div id="baixaPreviewParcial" style="display:none;margin-top:.8rem;background:var(--yellow-l);border:1.5px solid #ffe082;border-radius:8px;padding:.8rem;font-size:.85rem;font-weight:700;color:#f57f17"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="document.getElementById('modalBaixaFiado').classList.remove('open')">Cancelar</button>
+      <button class="btn-save orange" onclick="confirmarBaixa()">✅ CONFIRMAR BAIXA</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════
+     MODAL HISTÓRICO FIADO
+════════════════════════════════════════ -->
+<div class="modal-overlay" id="modalHistFiado" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="width:600px">
+    <div class="modal-header orange">
+      <h3 id="modalHistFiadoTitle">📜 HISTÓRICO DE BAIXAS</h3>
+      <button class="modal-close" onclick="document.getElementById('modalHistFiado').classList.remove('open')">✕</button>
+    </div>
+    <div class="modal-body" id="modalHistFiadoBody"></div>
+    <div class="modal-footer">
+      <button class="btn-cancel-modal" onclick="document.getElementById('modalHistFiado').classList.remove('open')">Fechar</button>
+    </div>
+  </div>
+</div>
+
+
+<script>
+  /* ═══════════════════════════════════════
+     GLOBALS
+  ═══════════════════════════════════════ */
+  window.pedidos = [];
+  window.valoresClientes = [];
+  window.fiados = [];
+  window._appReady = false;
+  let tipoSelecionado = 'entrega';
+  let filtroAtivo = 'todos';
+  let fiadoFiltroAtivo = 'todos';
+
+  /* ═══════════════════════════════════════
+     TABS
+  ═══════════════════════════════════════ */
+  window.switchTab = function switchTab(tab) {
+    ['agendamentos','valores','fiados'].forEach(t => {
+      document.getElementById('content-'+t).classList.toggle('active', t===tab);
+      const btn = document.getElementById('tab-'+t);
+      btn.classList.toggle('active', t===tab);
+    });
+    if (tab==='valores') { renderValores(); }
+    if (tab==='fiados')  { renderFiados(); updateFiadoStats(); }
+  }
+
+  /* ═══════════════════════════════════════
+     PHONE MASK
+  ═══════════════════════════════════════ */
+  function phoneMask(el) {
+    el.addEventListener('input', function() {
+      let v = this.value.replace(/\D/g,'');
+      if (v.length<=10) v = v.replace(/(\d{2})(\d{4})(\d{0,4})/,'($1) $2-$3');
+      else v = v.replace(/(\d{2})(\d{5})(\d{0,4})/,'($1) $2-$3');
+      this.value = v.trim().replace(/-$/,'');
+    });
+  }
+  phoneMask(document.getElementById('fTelefone'));
+  phoneMask(document.getElementById('mTelefone'));
+
+  window.updateAvatar = function updateAvatar(selectId, avatarId) {
+    const v = document.getElementById(selectId).value;
+    const av = document.getElementById(avatarId);
+    av.className = 'atendente-avatar';
+    if (v === 'Rosangela') { av.classList.add('rosa'); av.textContent = '👩🏻'; }
+    else if (v === 'Rebeca') { av.classList.add('rebe'); av.textContent = '👩🏽'; }
+    else av.textContent = '👤';
+  }
+
+  window.setTipo = function setTipo(tipo) {
+    tipoSelecionado = tipo;
+    document.getElementById('optEntrega').classList.toggle('selected', tipo==='entrega');
+    document.getElementById('optRetirada').classList.toggle('selected', tipo==='retirada');
+    document.getElementById('taxaRow').classList.toggle('visible', tipo==='entrega');
+    if (tipo==='retirada') document.getElementById('fTaxa').value = '';
+  }
+  document.getElementById('taxaRow').classList.add('visible');
+
+  window.toggleModalTaxa = function toggleModalTaxa() {
+    const tipo = document.getElementById('mTipo').value;
+    document.getElementById('mTaxaRow').style.display = tipo==='entrega' ? '' : 'none';
+    if (tipo==='retirada') document.getElementById('mTaxa').value = '';
+  }
+
+  window.setFilter = function setFilter(f, el) {
+    filtroAtivo = f;
+    document.querySelectorAll('#content-agendamentos .filter-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active');
+    renderTable();
+  }
+
+  window.setFiadoFiltro = function setFiadoFiltro(f, el) {
+    fiadoFiltroAtivo = f;
+    document.querySelectorAll('#content-fiados .filter-tab').forEach(t => t.classList.remove('active'));
+    el.classList.add('active', 'orange');
+    renderFiados();
+  }
+
+  /* ═══════════════════════════════════════
+     PEDIDOS
+  ═══════════════════════════════════════ */
+  window.addPedido = async function addPedido() {
+    const nome      = document.getElementById('fNome').value.trim();
+    const tel       = document.getElementById('fTelefone').value.trim();
+    const end       = document.getElementById('fEndereco').value.trim();
+    const compra    = document.getElementById('fDataCompra').value;
+    const qtd       = parseInt(document.getElementById('fQtd').value) || 1;
+    const valorGas  = parseFloat(document.getElementById('fValorGas').value) || 0;
+    const taxa      = tipoSelecionado==='entrega' ? (parseFloat(document.getElementById('fTaxa').value)||0) : 0;
+    const obs       = document.getElementById('fObs').value.trim();
+    const atendente = document.getElementById('fAtendente').value;
+
+    if (!nome||!tel||!end||!compra) { showToast('⚠️ Preencha todos os campos obrigatórios!','error'); return; }
+    if (!atendente) { showToast('⚠️ Selecione a atendente responsável!','warn'); return; }
+    if (!window._firebaseReady) { showToast('⚠️ Aguarde a conexão com Firebase...','warn'); return; }
+
+    const btn = document.getElementById('btnRegistrar');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+
+    try {
+      const codigo = 'GP' + String(window.pedidos.length + 1).padStart(4,'0');
+      await window._fsAddDoc(window._col, {
+        codigo, nome, tel, end, compra, qtd, valorGas,
+        tipo: tipoSelecionado, taxa, obs, atendente,
+        dataEntrega:'', entregue:false, criadoEm:Date.now()
+      });
+      clearForm();
+      showToast(`✅ Pedido de ${nome} registrado com sucesso!`);
+    } catch(e) {
+      console.error(e);
+      showToast('❌ Erro ao salvar no Firebase!','error');
+    } finally {
+      btn.disabled = false; btn.textContent = '+ REGISTRAR PEDIDO';
+    }
+  }
+
+  window.clearForm = function clearForm() {
+    ['fNome','fTelefone','fEndereco','fValorGas','fTaxa','fObs'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('fQtd').value = '1';
+    document.getElementById('fAtendente').value = '';
+    document.getElementById('fDataCompra').value = new Date().toISOString().split('T')[0];
+    updateAvatar('fAtendente','atendenteAvatar');
+    setTipo('entrega');
+  }
+
+  window.setEntrega = async function setEntrega(fsId, value) {
+    try {
+      await window._fsUpdateDoc(window._fsDoc(window._db,'pedidos',fsId), { dataEntrega:value, entregue:!!value });
+      if (value) showToast('🎉 Pedido marcado como entregue!');
+    } catch(e) { showToast('❌ Erro ao atualizar!','error'); }
+  }
+
+  window.deletePedido = async function deletePedido(fsId, nome) {
+    if (!confirm(`Excluir pedido de ${nome}?`)) return;
+    try {
+      await window._fsDeleteDoc(window._fsDoc(window._db,'pedidos',fsId));
+      showToast('🗑️ Pedido removido.');
+    } catch(e) { showToast('❌ Erro ao excluir!','error'); }
+  }
+
+  window.openModal = function openModal(fsId) {
+    const p = window.pedidos.find(x => x._fsId===fsId);
+    if (!p) return;
+    document.getElementById('mFsId').value = fsId;
+    document.getElementById('mNome').value = p.nome||'';
+    document.getElementById('mTelefone').value = p.tel||'';
+    document.getElementById('mEndereco').value = p.end||'';
+    document.getElementById('mDataCompra').value = p.compra||'';
+    document.getElementById('mQtd').value = p.qtd||1;
+    document.getElementById('mValorGas').value = p.valorGas||'';
+    document.getElementById('mTipo').value = p.tipo||'entrega';
+    document.getElementById('mTaxa').value = p.taxa||'';
+    document.getElementById('mObs').value = p.obs||'';
+    document.getElementById('mDataEntrega').value = p.dataEntrega||'';
+    document.getElementById('mAtendente').value = p.atendente||'';
+    updateAvatar('mAtendente','mAtendenteAvatar');
+    toggleModalTaxa();
+    document.getElementById('modalOverlay').classList.add('open');
+  }
+
+  window.closeModal = function closeModal() { document.getElementById('modalOverlay').classList.remove('open'); }
+  window.closeModalOutside = function closeModalOutside(e) { if (e.target===document.getElementById('modalOverlay')) closeModal(); }
+
+  window.salvarEdicao = async function salvarEdicao() {
+    const fsId   = document.getElementById('mFsId').value;
+    const nome   = document.getElementById('mNome').value.trim();
+    const tel    = document.getElementById('mTelefone').value.trim();
+    const end    = document.getElementById('mEndereco').value.trim();
+    const compra = document.getElementById('mDataCompra').value;
+
+    if (!nome||!tel||!end||!compra) { showToast('⚠️ Preencha os campos obrigatórios!','error'); return; }
+
+    const tipo = document.getElementById('mTipo').value;
+    const taxa = tipo==='entrega' ? (parseFloat(document.getElementById('mTaxa').value)||0) : 0;
+    const dataEntrega = document.getElementById('mDataEntrega').value;
+
+    const btn = document.getElementById('btnSalvar');
+    btn.disabled=true; btn.textContent='Salvando...';
+
+    try {
+      await window._fsUpdateDoc(window._fsDoc(window._db,'pedidos',fsId), {
+        nome, tel, end, compra,
+        qtd: parseInt(document.getElementById('mQtd').value)||1,
+        valorGas: parseFloat(document.getElementById('mValorGas').value)||0,
+        tipo, taxa, obs: document.getElementById('mObs').value.trim(),
+        atendente: document.getElementById('mAtendente').value,
+        dataEntrega, entregue:!!dataEntrega
+      });
+      closeModal();
+      showToast('💾 Pedido atualizado com sucesso!');
+    } catch(e) {
+      showToast('❌ Erro ao salvar!','error');
+    } finally {
+      btn.disabled=false; btn.textContent='💾 SALVAR ALTERAÇÕES';
+    }
+  }
+
+  function formatDate(d) {
+    if (!d) return '—';
+    const [y,m,dd] = d.split('-');
+    return `${dd}/${m}/${y}`;
+  }
+
+  function atendenteTag(a) {
+    if (!a) return '<span style="color:var(--muted);font-size:.78rem">—</span>';
+    const isRosa = a==='Rosangela';
+    const emoji  = isRosa ? '👩🏻' : '👩🏽';
+    const color  = isRosa ? '#c2185b' : '#512da8';
+    const bg     = isRosa ? '#fce4ec' : '#ede7f6';
+    return `<span style="display:inline-flex;align-items:center;gap:5px"><span style="font-size:15px">${emoji}</span><span style="color:${color};background:${bg};padding:3px 9px;border-radius:12px;font-size:.74rem;font-weight:800">${a}</span></span>`;
+  }
+
+  window.renderTable = function() {
+    const search = document.getElementById('searchInput').value.toLowerCase();
+    const tbody  = document.getElementById('tableBody');
+    const empty  = document.getElementById('emptyState');
+
+    let filtered = window.pedidos.filter(p => {
+      const ms = !search ||
+        (p.nome||'').toLowerCase().includes(search) ||
+        (p.tel||'').includes(search) ||
+        (p.end||'').toLowerCase().includes(search) ||
+        (p.codigo||'').toLowerCase().includes(search) ||
+        (p.atendente||'').toLowerCase().includes(search);
+      let mf = true;
+      if (filtroAtivo==='pendente') mf=!p.entregue;
+      else if (filtroAtivo==='entregue') mf=p.entregue&&p.tipo==='entrega';
+      else if (filtroAtivo==='retirada') mf=p.entregue&&p.tipo==='retirada';
+      return ms && mf;
+    });
+
+    document.getElementById('listCount').textContent = `${filtered.length} registro(s)`;
+
+    if (!filtered.length) { tbody.innerHTML=''; empty.style.display='block'; return; }
+    empty.style.display='none';
+
+    tbody.innerHTML = filtered.map(p => {
+      const statusBadge = p.entregue
+        ? (p.tipo==='retirada' ? `<span class="badge badge-retirada">🏠 Retirado</span>` : `<span class="badge badge-entregue">✅ Entregue</span>`)
+        : `<span class="badge badge-pending">⏳ Pendente</span>`;
+      const tipoBadge = p.tipo==='entrega'
+        ? `<span style="color:#bf360c;font-size:.78rem;font-weight:800">🚚 Entrega</span>`
+        : `<span style="color:var(--blue-d);font-size:.78rem;font-weight:800">🏠 Retirada</span>`;
+      const taxaVal = (+p.taxa)>0 ? `<span class="td-taxa">R$ ${(+p.taxa).toFixed(2)}</span>` : `<span style="color:var(--muted)">—</span>`;
+      const valorVal= (+p.valorGas)>0 ? `<span class="td-mono">R$ ${(+p.valorGas).toFixed(2)}</span>` : `<span style="color:var(--muted)">—</span>`;
+
+      return `<tr class="${p.entregue?'entregue':''}">
+        <td><span class="td-code">${p.codigo||'—'}</span></td>
+        <td class="td-name" title="${p.nome}">${p.nome}</td>
+        <td class="td-phone">${p.tel}</td>
+        <td class="td-addr" title="${p.end}">${p.end}</td>
+        <td class="td-mono">${formatDate(p.compra)}</td>
+        <td style="text-align:center;font-weight:800">${p.qtd}</td>
+        <td>${valorVal}</td>
+        <td>${tipoBadge}</td>
+        <td>${taxaVal}</td>
+        <td>${atendenteTag(p.atendente)}</td>
+        <td style="color:var(--muted);max-width:100px;overflow:hidden;text-overflow:ellipsis;font-size:.78rem" title="${p.obs||''}">${p.obs||'—'}</td>
+        <td class="no-fade">
+          <input type="date" class="delivery-date-input" value="${p.dataEntrega||''}"
+            onchange="setEntrega('${p._fsId}',this.value)">
+        </td>
+        <td class="no-fade">${statusBadge}</td>
+        <td class="no-fade">
+          <div class="btn-actions">
+            <button class="btn-edit" onclick="openModal('${p._fsId}')" title="Editar pedido">✏️</button>
+            <button class="btn-del"  onclick="deletePedido('${p._fsId}','${p.nome}')" title="Excluir pedido">✕</button>
+          </div>
+        </td>
+      </tr>`;
+    }).join('');
+  };
+
+  window.updateStats = function() {
+    const total   = window.pedidos.length;
+    const pending = window.pedidos.filter(p=>!p.entregue).length;
+    const today   = new Date().toISOString().split('T')[0];
+    const hoje    = window.pedidos.filter(p=>p.dataEntrega===today).length;
+    const taxas   = window.pedidos.reduce((s,p)=>s+(+p.taxa||0),0);
+    document.getElementById('statTotal').textContent   = total;
+    document.getElementById('statPending').textContent = pending;
+    document.getElementById('statHoje').textContent    = hoje;
+    document.getElementById('statTaxas').textContent   = 'R$ '+taxas.toFixed(2);
+  };
+
+  window.exportXLSX = function() {
+    if (!window.pedidos.length) { showToast('⚠️ Nenhum pedido para exportar.','warn'); return; }
+    const data = window.pedidos.map(p => ({
+      'Código':p.codigo, 'Atendente':p.atendente||'',
+      'Nome do Cliente':p.nome, 'Telefone':p.tel, 'Endereço':p.end,
+      'Data da Compra':formatDate(p.compra), 'Qtd Botijões':p.qtd,
+      'Valor do Gás (R$)':+p.valorGas||0,
+      'Tipo de Entrega':p.tipo==='entrega'?'Entrega em Casa':'Retirada na Portaria',
+      'Taxa de Entrega (R$)':+p.taxa||0, 'Observações':p.obs||'',
+      'Data de Entrega':p.dataEntrega?formatDate(p.dataEntrega):'',
+      'Status':p.entregue?(p.tipo==='retirada'?'Retirado':'Entregue'):'Pendente',
+    }));
+    const ws = XLSX.utils.json_to_sheet(data);
+    ws['!cols']=[{wch:8},{wch:14},{wch:25},{wch:18},{wch:40},{wch:14},{wch:8},{wch:15},{wch:22},{wch:16},{wch:30},{wch:14},{wch:12}];
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Pedidos');
+    const total=window.pedidos.length, entregues=window.pedidos.filter(p=>p.entregue).length;
+    const totalTaxas=window.pedidos.reduce((s,p)=>s+(+p.taxa||0),0);
+    const totalGas  =window.pedidos.reduce((s,p)=>s+(+p.valorGas||0),0);
+    const ws2=XLSX.utils.aoa_to_sheet([
+      ['RESUMO — GÁS DO POVO'],[''],
+      ['Total de Pedidos',total],['Pedidos Entregues',entregues],['Pedidos Pendentes',total-entregues],
+      ['Total em Taxas (R$)',totalTaxas],['Total em Vendas de Gás (R$)',totalGas],
+      ['Exportado em',new Date().toLocaleString('pt-BR')]
+    ]);
+    ws2['!cols']=[{wch:35},{wch:20}];
+    XLSX.utils.book_append_sheet(wb,ws2,'Resumo');
+    XLSX.writeFile(wb,`GasDoP_${new Date().toISOString().slice(0,10)}.xlsx`);
+    showToast(`📊 Exportado com ${total} pedidos!`);
+  };
+
+
+  /* ═══════════════════════════════════════
+     VALORES DE CLIENTES
+  ═══════════════════════════════════════ */
+  let prodRowCount = 0;
+
+  window.addProdutoRow = function addProdutoRow(nome='', valor='') {
+    prodRowCount++;
+    const id = 'prod_' + prodRowCount;
+    const list = document.getElementById('vcProdutosList');
+    const div = document.createElement('div');
+    div.className = 'produto-row';
+    div.id = id;
+    div.innerHTML = `
+      <input type="text" placeholder="Nome do produto" value="${nome}" class="prod-nome-input">
+      <input type="number" step="0.01" min="0" placeholder="R$ 0,00" value="${valor}" class="prod-valor-input">
+      <button class="btn-rm-prod" onclick="removeProdutoRow('${id}')" title="Remover">✕</button>
+    `;
+    list.appendChild(div);
+  }
+
+  window.removeProdutoRow = function removeProdutoRow(id) {
+    const el = document.getElementById(id);
+    const list = document.getElementById('vcProdutosList');
+    if (list.children.length <= 1) { showToast('⚠️ Deve ter pelo menos um produto!','warn'); return; }
+    if (el) el.remove();
+  }
+
+  function getProdutos(listId) {
+    const list = document.getElementById(listId);
+    const rows = list.querySelectorAll('.produto-row');
+    const produtos = [];
+    rows.forEach(row => {
+      const nome  = row.querySelector('.prod-nome-input').value.trim();
+      const valor = parseFloat(row.querySelector('.prod-valor-input').value) || 0;
+      if (nome) produtos.push({ nome, valor });
+    });
+    return produtos;
+  }
+
+  window.clearValorForm = function clearValorForm() {
+    document.getElementById('vcNome').value = '';
+    document.getElementById('vcData').value = new Date().toISOString().split('T')[0];
+    document.getElementById('vcProdutosList').innerHTML = '';
+    prodRowCount = 0;
+    addProdutoRow();
+  }
+
+  window.salvarValorCliente = async function salvarValorCliente() {
+    const nome = document.getElementById('vcNome').value.trim();
+    const data = document.getElementById('vcData').value;
+    const produtos = getProdutos('vcProdutosList');
+
+    if (!nome) { showToast('⚠️ Informe o nome do cliente!','error'); return; }
+    if (!data) { showToast('⚠️ Informe a data!','error'); return; }
+    if (!produtos.length) { showToast('⚠️ Adicione pelo menos um produto!','error'); return; }
+    if (!window._firebaseReady) { showToast('⚠️ Aguarde o Firebase...','warn'); return; }
+
+    const btn = document.getElementById('btnSalvarValor');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+
+    // verifica se já existe cliente com mesmo nome (case-insensitive)
+    const existing = window.valoresClientes.find(v => v.nome.toLowerCase() === nome.toLowerCase());
+
+    try {
+      if (existing) {
+        // guarda valores atuais no histórico
+        const historico = existing.historico || [];
+        historico.push({
+          produtos: existing.produtos,
+          data: existing.dataAtualizacao,
+          atualizadoEm: existing.criadoEm
+        });
+        await window._fsUpdateDoc(window._fsDoc(window._db,'valores_clientes', existing._fsId), {
+          produtos, dataAtualizacao: data, historico, criadoEm: Date.now()
+        });
+        showToast(`💰 Valores de ${nome} atualizados!`);
+      } else {
+        await window._fsAddDoc(window._colValores, {
+          nome, produtos, dataAtualizacao: data, historico: [], criadoEm: Date.now()
+        });
+        showToast(`✅ Valores de ${nome} cadastrados!`);
+      }
+      clearValorForm();
+    } catch(e) {
+      console.error(e);
+      showToast('❌ Erro ao salvar!','error');
+    } finally {
+      btn.disabled = false; btn.textContent = '💾 SALVAR VALORES';
+    }
+  }
+
+  window.renderValores = function() {
+    const search = (document.getElementById('vcSearchInput').value||'').toLowerCase();
+    const grid = document.getElementById('valoresGrid');
+    let list = window.valoresClientes.filter(v =>
+      !search || (v.nome||'').toLowerCase().includes(search)
+    );
+
+    document.getElementById('valoresCount').textContent = `${list.length} cliente(s)`;
+
+    if (!list.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="icon">💰</div><p>Nenhum valor cadastrado ainda.</p></div>`;
+      return;
+    }
+
+    grid.innerHTML = list.map(v => {
+      const prodsHtml = (v.produtos||[]).map(p => `
+        <div class="prod-item">
+          <div>
+            <div class="prod-nome">${esc(p.nome)}</div>
+          </div>
+          <div style="text-align:right">
+            <div class="prod-valor">R$ ${(+p.valor).toFixed(2)}</div>
+          </div>
+        </div>
+      `).join('');
+
+      return `
+        <div class="valor-cliente-card">
+          <div class="valor-cliente-head">
+            <div>
+              <div class="valor-cliente-nome">👤 ${esc(v.nome)}</div>
+              <div style="font-size:.7rem;color:var(--muted);margin-top:2px">Atualizado em ${formatDate(v.dataAtualizacao)}</div>
+            </div>
+            <div style="display:flex;gap:6px">
+              <button class="btn-hist" onclick="abrirHistValores('${v._fsId}')">📜 Histórico</button>
+              <button class="btn-edit" onclick="abrirEditValor('${v._fsId}')" title="Editar">✏️</button>
+              <button class="btn-del" onclick="deleteValorCliente('${v._fsId}','${esc(v.nome)}')" title="Excluir">✕</button>
+            </div>
+          </div>
+          <div class="valor-cliente-body">${prodsHtml}</div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  window.abrirHistValores = function abrirHistValores(fsId) {
+    const v = window.valoresClientes.find(x => x._fsId===fsId);
+    if (!v) return;
+    document.getElementById('modalHistValoresTitle').textContent = `📜 Histórico — ${v.nome}`;
+    const hist = v.historico || [];
+    if (!hist.length) {
+      document.getElementById('modalHistValoresBody').innerHTML = '<p class="hist-empty">Nenhum histórico de atualização ainda.</p>';
+    } else {
+      const rows = [...hist].reverse().map((h,i) => {
+        const prods = (h.produtos||[]).map(p => `<span style="display:inline-block;background:var(--green-l);border-radius:5px;padding:2px 8px;font-size:.75rem;margin:2px;font-weight:700">${esc(p.nome)}: R$ ${(+p.valor).toFixed(2)}</span>`).join('');
+        return `<tr>
+          <td>${hist.length - i}ª versão</td>
+          <td>${formatDate(h.data)||'—'}</td>
+          <td>${prods}</td>
+        </tr>`;
+      }).join('');
+      document.getElementById('modalHistValoresBody').innerHTML = `
+        <table class="historico-table">
+          <thead><tr><th>Versão</th><th>Data</th><th>Produtos e Valores</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+    document.getElementById('modalHistValores').classList.add('open');
+  }
+
+  window.abrirEditValor = function abrirEditValor(fsId) {
+    const v = window.valoresClientes.find(x => x._fsId===fsId);
+    if (!v) return;
+    document.getElementById('evFsId').value = fsId;
+    document.getElementById('evNome').value = v.nome;
+    document.getElementById('evData').value = v.dataAtualizacao || new Date().toISOString().split('T')[0];
+    // preenche produtos
+    const list = document.getElementById('evProdutosList');
+    list.innerHTML = '';
+    let ec = 0;
+    (v.produtos||[]).forEach(p => {
+      ec++;
+      const id = 'ep_'+ec;
+      const div = document.createElement('div');
+      div.className='produto-row'; div.id=id;
+      div.innerHTML = `
+        <input type="text" class="prod-nome-input" value="${esc(p.nome)}" placeholder="Produto">
+        <input type="number" class="prod-valor-input" step="0.01" min="0" value="${p.valor}" placeholder="R$">
+        <button class="btn-rm-prod" onclick="this.closest('.produto-row').remove()" title="Remover">✕</button>
+      `;
+      list.appendChild(div);
+    });
+    document.getElementById('modalEditValor').classList.add('open');
+  }
+
+  let evRowCount = 0;
+  window.addProdutoRowEdit = function addProdutoRowEdit(nome='', valor='') {
+    evRowCount++;
+    const id = 'ep_new_'+evRowCount;
+    const list = document.getElementById('evProdutosList');
+    const div = document.createElement('div');
+    div.className='produto-row'; div.id=id;
+    div.innerHTML = `
+      <input type="text" class="prod-nome-input" value="${nome}" placeholder="Produto">
+      <input type="number" class="prod-valor-input" step="0.01" min="0" value="${valor}" placeholder="R$">
+      <button class="btn-rm-prod" onclick="this.closest('.produto-row').remove()" title="Remover">✕</button>
+    `;
+    list.appendChild(div);
+  }
+
+  window.salvarEdicaoValor = async function salvarEdicaoValor() {
+    const fsId = document.getElementById('evFsId').value;
+    const nome = document.getElementById('evNome').value.trim();
+    const data = document.getElementById('evData').value;
+    const produtos = getProdutos('evProdutosList');
+
+    if (!nome||!data||!produtos.length) { showToast('⚠️ Preencha todos os campos!','error'); return; }
+
+    const v = window.valoresClientes.find(x => x._fsId===fsId);
+    if (!v) return;
+
+    const historico = v.historico || [];
+    historico.push({ produtos: v.produtos, data: v.dataAtualizacao, atualizadoEm: v.criadoEm });
+
+    try {
+      await window._fsUpdateDoc(window._fsDoc(window._db,'valores_clientes',fsId), {
+        nome, produtos, dataAtualizacao: data, historico, criadoEm: Date.now()
+      });
+      document.getElementById('modalEditValor').classList.remove('open');
+      showToast('💾 Valores atualizados!');
+    } catch(e) { showToast('❌ Erro!','error'); }
+  }
+
+  window.deleteValorCliente = async function deleteValorCliente(fsId, nome) {
+    if (!confirm(`Excluir valores de ${nome}?`)) return;
+    try {
+      await window._fsDeleteDoc(window._fsDoc(window._db,'valores_clientes',fsId));
+      showToast('🗑️ Removido.');
+    } catch(e) { showToast('❌ Erro!','error'); }
+  }
+
+
+  /* ═══════════════════════════════════════
+     FIADOS
+  ═══════════════════════════════════════ */
+  window.clearFiadoForm = function clearFiadoForm() {
+    ['ffNome','ffValor','ffObs'].forEach(id => document.getElementById(id).value='');
+    document.getElementById('ffData').value = new Date().toISOString().split('T')[0];
+  }
+
+  window.addFiado = async function addFiado() {
+    const nome  = document.getElementById('ffNome').value.trim();
+    const valor = parseFloat(document.getElementById('ffValor').value) || 0;
+    const data  = document.getElementById('ffData').value;
+    const obs   = document.getElementById('ffObs').value.trim();
+
+    if (!nome) { showToast('⚠️ Informe o nome do cliente!','error'); return; }
+    if (valor <= 0) { showToast('⚠️ Informe um valor válido!','error'); return; }
+    if (!data) { showToast('⚠️ Informe a data!','error'); return; }
+    if (!window._firebaseReady) { showToast('⚠️ Aguarde o Firebase...','warn'); return; }
+
+    const btn = document.getElementById('btnRegistrarFiado');
+    btn.disabled = true; btn.textContent = 'Salvando...';
+
+    try {
+      await window._fsAddDoc(window._colFiados, {
+        nome, valorOriginal: valor, saldoDevedor: valor,
+        dataEntrega: data, obs, status: 'aberto',
+        historicosBaixa: [], criadoEm: Date.now()
+      });
+      clearFiadoForm();
+      showToast(`✅ Fiado de ${nome} registrado!`);
+    } catch(e) {
+      console.error(e);
+      showToast('❌ Erro ao salvar!','error');
+    } finally {
+      btn.disabled = false; btn.textContent = '+ REGISTRAR FIADO';
+    }
+  }
+
+  window.updateFiadoStats = function updateFiadoStats() {
+    const total   = window.fiados.length;
+    const abertos = window.fiados.filter(f=>f.status!=='quitado').length;
+    const quitados= window.fiados.filter(f=>f.status==='quitado').length;
+    const totalAberto = window.fiados.filter(f=>f.status!=='quitado').reduce((s,f)=>s+(+f.saldoDevedor||0),0);
+    document.getElementById('fiadoTotal').textContent = total;
+    document.getElementById('fiadoAberto').textContent = abertos;
+    document.getElementById('fiadoQuitado').textContent = quitados;
+    document.getElementById('fiadoTotalValor').textContent = 'R$ '+totalAberto.toFixed(2);
+  }
+
+  window.renderFiados = function() {
+    updateFiadoStats();
+    const search = (document.getElementById('ffSearchInput').value||'').toLowerCase();
+    const grid = document.getElementById('fiadosGrid');
+    let list = window.fiados.filter(f => {
+      const ms = !search || (f.nome||'').toLowerCase().includes(search);
+      let mf = true;
+      if (fiadoFiltroAtivo==='aberto') mf = f.status !== 'quitado';
+      else if (fiadoFiltroAtivo==='quitado') mf = f.status === 'quitado';
+      return ms && mf;
+    });
+
+    document.getElementById('fiadosCount').textContent = `${list.length} fiado(s)`;
+
+    if (!list.length) {
+      grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="icon">📋</div><p>Nenhum fiado encontrado.</p></div>`;
+      return;
+    }
+
+    grid.innerHTML = list.map(f => {
+      let statusBadge = '';
+      if (f.status==='quitado') statusBadge = `<span class="badge badge-quitado">✅ Quitado</span>`;
+      else if ((+f.saldoDevedor) < (+f.valorOriginal)) statusBadge = `<span class="badge badge-parcial">⚡ Parcial</span>`;
+      else statusBadge = `<span class="badge badge-aberto">🔓 Em Aberto</span>`;
+
+      const saldoCor = f.status==='quitado' ? 'td-valor' : 'td-valor-red';
+      const nbaixas = (f.historicosBaixa||[]).length;
+
+      return `
+        <div class="fiado-card">
+          <div class="fiado-head">
+            <div>
+              <div class="fiado-nome">👤 ${esc(f.nome)}</div>
+              <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${formatDate(f.dataEntrega)}</div>
+            </div>
+            ${statusBadge}
+          </div>
+          <div class="fiado-body">
+            <div class="fiado-info">
+              <span class="fiado-info-label">Valor Original</span>
+              <span class="fiado-info-val">R$ ${(+f.valorOriginal).toFixed(2)}</span>
+            </div>
+            <div class="fiado-info">
+              <span class="fiado-info-label">Saldo Devedor</span>
+              <span class="fiado-info-val ${saldoCor}">R$ ${(+f.saldoDevedor).toFixed(2)}</span>
+            </div>
+            ${f.obs ? `<div style="font-size:.78rem;color:var(--muted);margin-top:2px">📝 ${esc(f.obs)}</div>` : ''}
+            <div style="display:flex;gap:6px;margin-top:.4rem;flex-wrap:wrap">
+              ${f.status!=='quitado' ? `<button class="btn-baixa" onclick="abrirBaixaFiado('${f._fsId}')">💳 Registrar Baixa</button>` : ''}
+              <button class="btn-hist" onclick="abrirHistFiado('${f._fsId}')">📜 Histórico ${nbaixas>0?`(${nbaixas})`:''}
+              </button>
+              <button class="btn-del" onclick="deleteFiado('${f._fsId}','${esc(f.nome)}')" title="Excluir" style="width:auto;padding:5px 10px;font-size:.75rem">✕</button>
+            </div>
+          </div>
+        </div>
+      `;
+    }).join('');
+  };
+
+  // Modal Baixa
+  let _baixaFiado = null;
+  window.abrirBaixaFiado = function abrirBaixaFiado(fsId) {
+    const f = window.fiados.find(x=>x._fsId===fsId);
+    if (!f) return;
+    _baixaFiado = f;
+    document.getElementById('baixaFsId').value = fsId;
+    document.getElementById('modalBaixaTitle').textContent = `💳 Baixa — ${f.nome}`;
+    document.getElementById('baixaValorOriginal').textContent = `R$ ${(+f.valorOriginal).toFixed(2)}`;
+    document.getElementById('baixaSaldoDevedor').textContent = `R$ ${(+f.saldoDevedor).toFixed(2)}`;
+    document.getElementById('baixaValorPago').value = '';
+    document.getElementById('baixaObs').value = '';
+    document.getElementById('baixaData').value = new Date().toISOString().split('T')[0];
+    document.getElementById('baixaPreview').style.display='none';
+    document.getElementById('baixaPreviewParcial').style.display='none';
+    document.getElementById('modalBaixaFiado').classList.add('open');
+  }
+
+  window.calcBaixaSaldo = function calcBaixaSaldo() {
+    if (!_baixaFiado) return;
+    const pago  = parseFloat(document.getElementById('baixaValorPago').value)||0;
+    const saldo = +_baixaFiado.saldoDevedor;
+    const resto = saldo - pago;
+    const prev  = document.getElementById('baixaPreview');
+    const prevP = document.getElementById('baixaPreviewParcial');
+    if (pago <= 0) { prev.style.display='none'; prevP.style.display='none'; return; }
+    if (pago >= saldo) {
+      prev.style.display='block';
+      prev.textContent = `✅ Fiado será QUITADO integralmente! ${pago > saldo ? `(troco: R$ ${(pago-saldo).toFixed(2)})` : ''}`;
+      prevP.style.display='none';
+    } else {
+      prevP.style.display='block';
+      prevP.textContent = `⚡ Pagamento parcial. Saldo restante: R$ ${resto.toFixed(2)}`;
+      prev.style.display='none';
+    }
+  }
+
+  window.confirmarBaixa = async function confirmarBaixa() {
+    const fsId  = document.getElementById('baixaFsId').value;
+    const pago  = parseFloat(document.getElementById('baixaValorPago').value)||0;
+    const data  = document.getElementById('baixaData').value;
+    const obs   = document.getElementById('baixaObs').value.trim();
+
+    if (pago <= 0) { showToast('⚠️ Informe o valor pago!','error'); return; }
+    if (!data) { showToast('⚠️ Informe a data!','error'); return; }
+
+    const f = window.fiados.find(x=>x._fsId===fsId);
+    if (!f) return;
+
+    const saldo  = +f.saldoDevedor;
+    const novoSaldo = Math.max(0, saldo - pago);
+    const quitado   = novoSaldo <= 0;
+
+    const hist = f.historicosBaixa || [];
+    hist.push({
+      dataBaixa: data,
+      valorPago: pago,
+      saldoAntes: saldo,
+      saldoDepois: novoSaldo,
+      obs,
+      registradoEm: Date.now()
+    });
+
+    try {
+      await window._fsUpdateDoc(window._fsDoc(window._db,'fiados',fsId), {
+        saldoDevedor: novoSaldo,
+        status: quitado ? 'quitado' : 'aberto',
+        historicosBaixa: hist
+      });
+      document.getElementById('modalBaixaFiado').classList.remove('open');
+      showToast(quitado ? `🎉 Fiado de ${f.nome} quitado!` : `💳 Baixa registrada! Saldo: R$ ${novoSaldo.toFixed(2)}`);
+    } catch(e) {
+      showToast('❌ Erro ao registrar baixa!','error');
+    }
+  }
+
+  window.abrirHistFiado = function abrirHistFiado(fsId) {
+    const f = window.fiados.find(x=>x._fsId===fsId);
+    if (!f) return;
+    document.getElementById('modalHistFiadoTitle').textContent = `📜 Histórico — ${f.nome}`;
+    const hist = f.historicosBaixa || [];
+    if (!hist.length) {
+      document.getElementById('modalHistFiadoBody').innerHTML = '<p class="hist-empty">Nenhuma baixa registrada ainda.</p>';
+    } else {
+      const rows = [...hist].reverse().map((h,i) => `
+        <tr>
+          <td>${hist.length-i}ª baixa</td>
+          <td>${formatDate(h.dataBaixa)}</td>
+          <td class="td-valor" style="font-family:'JetBrains Mono',monospace">R$ ${(+h.valorPago).toFixed(2)}</td>
+          <td class="td-valor-red" style="font-family:'JetBrains Mono',monospace">R$ ${(+h.saldoAntes).toFixed(2)}</td>
+          <td class="td-valor" style="font-family:'JetBrains Mono',monospace;color:${h.saldoDepois<=0?'var(--green-d)':'var(--orange)'}">R$ ${(+h.saldoDepois).toFixed(2)}</td>
+          <td style="color:var(--muted);font-size:.78rem">${h.obs||'—'}</td>
+        </tr>
+      `).join('');
+      document.getElementById('modalHistFiadoBody').innerHTML = `
+        <table class="historico-table">
+          <thead><tr><th>#</th><th>Data</th><th>Pago</th><th>Saldo Antes</th><th>Saldo Depois</th><th>Obs.</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>`;
+    }
+    document.getElementById('modalHistFiado').classList.add('open');
+  }
+
+  window.deleteFiado = async function deleteFiado(fsId, nome) {
+    if (!confirm(`Excluir fiado de ${nome}?`)) return;
+    try {
+      await window._fsDeleteDoc(window._fsDoc(window._db,'fiados',fsId));
+      showToast('🗑️ Fiado removido.');
+    } catch(e) { showToast('❌ Erro!','error'); }
+  }
+
+  /* ═══════════════════════════════════════
+     UTILS
+  ═══════════════════════════════════════ */
+  function esc(s) {
+    return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  function showToast(msg, type='') {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.className = 'toast show' + (type?' '+type:'');
+    setTimeout(()=>t.classList.remove('show'), 3500);
+  }
+
+  /* ═══════════════════════════════════════
+     INIT — roda depois de todas as funções declaradas
+  ═══════════════════════════════════════ */
+  document.getElementById('fDataCompra').value = new Date().toISOString().split('T')[0];
+  document.getElementById('vcData').value = new Date().toISOString().split('T')[0];
+  document.getElementById('ffData').value = new Date().toISOString().split('T')[0];
+  document.getElementById('baixaData').value = new Date().toISOString().split('T')[0];
+
+  window.addProdutoRow(); // primeira linha de produto
+
+  setInterval(() => {
+    document.getElementById('clock').textContent = new Date().toLocaleString('pt-BR', {hour12:false});
+  }, 1000);
+  document.getElementById('clock').textContent = new Date().toLocaleString('pt-BR', {hour12:false});
+
+  document.addEventListener('firebase-ready', () => {
+    window._appReady = true;
+    document.getElementById('btnRegistrar').disabled = false;
+  });
+  setTimeout(() => {
+    if (!window._firebaseReady) {
+      document.getElementById('fbDot').className = 'fb-dot err';
+      document.getElementById('fbText').textContent = 'Sem conexão';
+    }
+  }, 8000);
+
+  window._appReady = true;
+  renderTable();
+  updateStats();
+  renderValores();
+  renderFiados();
+</script>
+</body>
+</html>
