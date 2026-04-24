@@ -1596,46 +1596,93 @@
       return ms && mf;
     });
 
-    document.getElementById('fiadosCount').textContent = `${list.length} fiado(s)`;
+    // Agrupar pelo nome (case-insensitive, trim)
+    const grupos = {};
+    list.forEach(f => {
+      const key = (f.nome||'').trim().toLowerCase();
+      if (!grupos[key]) grupos[key] = [];
+      grupos[key].push(f);
+    });
+
+    const grupoList = Object.values(grupos);
+    document.getElementById('fiadosCount').textContent = `${grupoList.length} cliente(s) / ${list.length} fiado(s)`;
 
     if (!list.length) {
       grid.innerHTML = `<div class="empty-state" style="grid-column:1/-1"><div class="icon">📋</div><p>Nenhum fiado encontrado.</p></div>`;
       return;
     }
 
-    grid.innerHTML = list.map(f => {
+    grid.innerHTML = grupoList.map(grupo => {
+      const nomeDisplay = grupo[0].nome;
+      const totalOriginal = grupo.reduce((s,f) => s + (+f.valorOriginal||0), 0);
+      const totalSaldo    = grupo.reduce((s,f) => s + (+f.saldoDevedor||0), 0);
+      const todosQuitados = grupo.every(f => f.status === 'quitado');
+      const algumAberto   = grupo.some(f => f.status !== 'quitado');
+      const algumParcial  = grupo.some(f => f.status !== 'quitado' && (+f.saldoDevedor) < (+f.valorOriginal));
+      const totalBaixas   = grupo.reduce((s,f) => s + (f.historicosBaixa||[]).length, 0);
+      const fsIds         = grupo.map(f => f._fsId);
+
       let statusBadge = '';
-      if (f.status==='quitado') statusBadge = `<span class="badge badge-quitado">✅ Quitado</span>`;
-      else if ((+f.saldoDevedor) < (+f.valorOriginal)) statusBadge = `<span class="badge badge-parcial">⚡ Parcial</span>`;
+      if (todosQuitados) statusBadge = `<span class="badge badge-quitado">✅ Quitado</span>`;
+      else if (algumParcial) statusBadge = `<span class="badge badge-parcial">⚡ Parcial</span>`;
       else statusBadge = `<span class="badge badge-aberto">🔓 Em Aberto</span>`;
 
-      const saldoCor = f.status==='quitado' ? 'td-valor' : 'td-valor-red';
-      const nbaixas = (f.historicosBaixa||[]).length;
+      const saldoCor = todosQuitados ? 'td-valor' : 'td-valor-red';
+
+      // Linhas de entregas individuais
+      const entregasHtml = grupo.map(f => {
+        const sCorItem = f.status==='quitado' ? 'var(--green-d)' : 'var(--red)';
+        return `
+          <div style="display:flex;justify-content:space-between;align-items:center;
+                      padding:5px 8px;border-radius:6px;background:var(--bg);margin-bottom:4px;gap:8px">
+            <div style="display:flex;align-items:center;gap:6px;flex:1;min-width:0">
+              <span style="font-size:.7rem;color:var(--muted);white-space:nowrap">📦 ${formatDate(f.dataEntrega)}</span>
+              ${f.obs ? `<span style="font-size:.68rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${esc(f.obs)}</span>` : ''}
+            </div>
+            <div style="display:flex;gap:12px;align-items:center;flex-shrink:0">
+              <span style="font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace">R$ ${(+f.valorOriginal).toFixed(2)}</span>
+              <span style="font-size:.72rem;font-weight:700;color:${sCorItem};font-family:'JetBrains Mono',monospace">R$ ${(+f.saldoDevedor).toFixed(2)}</span>
+              ${f.status!=='quitado' ? `<button class="btn-baixa" style="padding:3px 8px;font-size:.68rem" onclick="abrirBaixaFiado('${f._fsId}')">💳</button>` : `<span style="font-size:.8rem">✅</span>`}
+              <button class="btn-del" onclick="deleteFiado('${f._fsId}','${esc(f.nome)}')" title="Excluir" style="width:auto;padding:3px 7px;font-size:.68rem">✕</button>
+            </div>
+          </div>`;
+      }).join('');
+
+      const abrirBaixaGrupo = algumAberto
+        ? `<button class="btn-baixa" onclick="abrirBaixaFiado('${grupo.find(f=>f.status!=='quitado')._fsId}')">💳 Registrar Baixa</button>`
+        : '';
+
+      const histBtns = fsIds.map((id,i) =>
+        `<button class="btn-hist" onclick="abrirHistFiado('${id}')" title="Histórico entrega ${i+1}">📜 ${grupo.length>1?`#${i+1}`:''} Histórico${(grupo[i].historicosBaixa||[]).length>0?` (${(grupo[i].historicosBaixa||[]).length})`:''}</button>`
+      ).join('');
 
       return `
         <div class="fiado-card">
           <div class="fiado-head">
             <div>
-              <div class="fiado-nome">👤 ${esc(f.nome)}</div>
-              <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${formatDate(f.dataEntrega)}</div>
+              <div class="fiado-nome">👤 ${esc(nomeDisplay)}</div>
+              <div style="font-size:.7rem;color:var(--muted);margin-top:2px">${grupo.length} entrega(s)</div>
             </div>
             ${statusBadge}
           </div>
           <div class="fiado-body">
             <div class="fiado-info">
-              <span class="fiado-info-label">Valor Original</span>
-              <span class="fiado-info-val">R$ ${(+f.valorOriginal).toFixed(2)}</span>
+              <span class="fiado-info-label">Valor Original Total</span>
+              <span class="fiado-info-val">R$ ${totalOriginal.toFixed(2)}</span>
             </div>
             <div class="fiado-info">
-              <span class="fiado-info-label">Saldo Devedor</span>
-              <span class="fiado-info-val ${saldoCor}">R$ ${(+f.saldoDevedor).toFixed(2)}</span>
+              <span class="fiado-info-label">Saldo Devedor Total</span>
+              <span class="fiado-info-val ${saldoCor}">R$ ${totalSaldo.toFixed(2)}</span>
             </div>
-            ${f.obs ? `<div style="font-size:.78rem;color:var(--muted);margin-top:2px">📝 ${esc(f.obs)}</div>` : ''}
-            <div style="display:flex;gap:6px;margin-top:.4rem;flex-wrap:wrap">
-              ${f.status!=='quitado' ? `<button class="btn-baixa" onclick="abrirBaixaFiado('${f._fsId}')">💳 Registrar Baixa</button>` : ''}
-              <button class="btn-hist" onclick="abrirHistFiado('${f._fsId}')">📜 Histórico ${nbaixas>0?`(${nbaixas})`:''}
-              </button>
-              <button class="btn-del" onclick="deleteFiado('${f._fsId}','${esc(f.nome)}')" title="Excluir" style="width:auto;padding:5px 10px;font-size:.75rem">✕</button>
+
+            <div style="margin-top:.6rem;margin-bottom:.2rem">
+              <div style="font-size:.68rem;font-weight:800;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:4px">📋 Entregas</div>
+              ${entregasHtml}
+            </div>
+
+            <div style="display:flex;gap:6px;margin-top:.5rem;flex-wrap:wrap">
+              ${abrirBaixaGrupo}
+              ${histBtns}
             </div>
           </div>
         </div>
