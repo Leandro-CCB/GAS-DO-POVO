@@ -1631,7 +1631,7 @@
 
       // Linhas de entregas individuais
       const entregasHtml = grupo.map(f => {
-        const sCorItem = f.status==='quitado' ? 'var(--green-d)' : 'var(--red)';
+        if (f.status === 'quitado') return '';
         return `
           <div style="display:flex;justify-content:space-between;align-items:center;
                       padding:5px 8px;border-radius:6px;background:var(--bg);margin-bottom:4px;gap:8px">
@@ -1640,9 +1640,8 @@
               ${f.obs ? `<span style="font-size:.68rem;color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">· ${esc(f.obs)}</span>` : ''}
             </div>
             <div style="display:flex;gap:12px;align-items:center;flex-shrink:0">
-              <span style="font-size:.72rem;color:var(--muted);font-family:'JetBrains Mono',monospace">R$ ${(+f.valorOriginal).toFixed(2)}</span>
-              <span style="font-size:.72rem;font-weight:700;color:${sCorItem};font-family:'JetBrains Mono',monospace">R$ ${(+f.saldoDevedor).toFixed(2)}</span>
-              ${f.status!=='quitado' ? `<button class="btn-baixa" style="padding:3px 8px;font-size:.68rem" onclick="abrirBaixaFiado('${f._fsId}')">💳</button>` : `<span style="font-size:.8rem">✅</span>`}
+              <span style="font-size:.72rem;font-weight:700;color:var(--red);font-family:'JetBrains Mono',monospace">R$ ${(+f.saldoDevedor).toFixed(2)}</span>
+              <button class="btn-baixa" style="padding:3px 8px;font-size:.68rem" onclick="abrirBaixaFiado('${f._fsId}')">💳</button>
               <button class="btn-del" onclick="deleteFiado('${f._fsId}','${esc(f.nome)}')" title="Excluir" style="width:auto;padding:3px 7px;font-size:.68rem">✕</button>
             </div>
           </div>`;
@@ -1666,10 +1665,6 @@
             ${statusBadge}
           </div>
           <div class="fiado-body">
-            <div class="fiado-info">
-              <span class="fiado-info-label">Valor Original Total</span>
-              <span class="fiado-info-val">R$ ${totalOriginal.toFixed(2)}</span>
-            </div>
             <div class="fiado-info">
               <span class="fiado-info-label">Saldo Devedor Total</span>
               <span class="fiado-info-val ${saldoCor}">R$ ${totalSaldo.toFixed(2)}</span>
